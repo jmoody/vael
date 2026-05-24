@@ -228,14 +228,22 @@ async def get_full_exploration_primer() -> dict[str, Any]:
 async def lookup_item(name_or_id: str) -> dict[str, Any]:
     """Look up any EVE item, ship, or module by name or type ID."""
     log.info("tool: lookup_item(%s)", name_or_id)
-    from eve_agent.sde import get_type, search_types
+    from eve_agent.sde import search_types
+    from eve_agent.resolver import resolve_type_id, resolve_type_info
     s = name_or_id.strip()
     if s.isdigit():
-        t = get_type(int(s))
-        return t or {"error": f"No type with id {s}."}
+        info = await resolve_type_info(int(s))
+        return info or {"error": f"No type with id {s}."}
+    # Prefer SDE search so we can return disambiguation matches; fall back to ESI on miss.
     matches = search_types(s, limit=10)
-    if not matches: return {"error": f"No item type matching '{s}'."}
-    if len(matches) == 1: return get_type(matches[0]["type_id"])
+    if not matches:
+        type_id = await resolve_type_id(s)
+        if type_id is None:
+            return {"error": f"No item type matching '{s}'."}
+        info = await resolve_type_info(type_id)
+        return info or {"error": f"No type with id {type_id}."}
+    if len(matches) == 1:
+        return await resolve_type_info(matches[0]["type_id"])
     return {"matches": matches, "note": f"{len(matches)} matches."}
 
 @mcp.tool()

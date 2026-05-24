@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "$(uname)" != "Darwin" ]]; then
+  echo "This script is for macOS only."
+  exit 0
+fi
+
+PROJECT_DIR="$(git rev-parse --show-toplevel)"
+readonly PROJECT_DIR
+
+install_brew_deps() {
+  echo "Installing Homebrew prerequisites..."
+  local deps=(bash shellcheck jq yq coreutils make gh)
+  for dep in "${deps[@]}"; do
+    if ! brew list "$dep" &>/dev/null; then
+      brew install "$dep"
+    else
+      echo "  $dep already installed"
+    fi
+  done
+}
+
+install_tools() {
+  local tools_dir="${PROJECT_DIR}/_tools"
+  local go_version
+  go_version=$(grep '^go ' "${PROJECT_DIR}/go.mod" | awk '{print $2}')
+
+  mkdir -p "${tools_dir}"
+
+  (
+    set -e
+    cd "${tools_dir}"
+    export GOBIN="${PROJECT_DIR}/bin"
+    export GOTOOLCHAIN="auto"
+
+    if [[ ! -f "go.mod" ]]; then
+      go mod init tools
+    fi
+
+    go mod edit -go="${go_version}"
+
+  go install golang.org/x/tools/cmd/goimports@latest
+  go install gotest.tools/gotestsum@latest
+    go install go.uber.org/mock/mockgen@latest
+    go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+  )
+}
+
+main() {
+  mkdir -p "${PROJECT_DIR}/tmp"
+  mkdir -p "${PROJECT_DIR}/bin"
+
+  install_brew_deps
+  install_tools
+}
+
+main "$@"

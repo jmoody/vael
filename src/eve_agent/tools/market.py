@@ -18,6 +18,7 @@ from typing import Optional
 
 from eve_agent import auth
 from eve_agent.esi_client import ESIClient
+from eve_agent.resolver import resolve_type_id, resolve_type_info
 from eve_agent.sde import get_system, get_type, search_systems, search_types
 
 
@@ -41,19 +42,9 @@ def _current_character_id() -> int:
     return chars[0].character_id
 
 
-def _resolve_type_id(name_or_id: str) -> Optional[int]:
-    s = str(name_or_id).strip()
-    if s.isdigit():
-        return int(s)
-    matches = search_types(s, limit=10)
-    if not matches:
-        return None
-    # Prefer exact case-insensitive match
-    for m in matches:
-        if m["name"].lower() == s.lower():
-            return m["type_id"]
-    # Otherwise return the first published match
-    return matches[0]["type_id"]
+async def _resolve_type_id(name_or_id: str) -> Optional[int]:
+    """Resolve a name or numeric ID to a type ID, falling back to ESI for items not in the SDE."""
+    return await resolve_type_id(name_or_id)
 
 
 def _resolve_region_id(hub_or_region: str) -> Optional[int]:
@@ -83,7 +74,7 @@ async def get_market_price(
     Fetch live best-buy and best-sell prices for an item in a market hub.
     Returns highest buy, lowest sell, and the spread.
     """
-    type_id = _resolve_type_id(item)
+    type_id = await _resolve_type_id(item)
     if not type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
@@ -94,7 +85,7 @@ async def get_market_price(
     region_id = hub_info["region_id"]
     system_id = hub_info["system_id"]
 
-    type_info = get_type(type_id)
+    type_info = await resolve_type_info(type_id)
     item_name = type_info["name"] if type_info else f"Type {type_id}"
 
     async with ESIClient() as esi:
@@ -143,11 +134,11 @@ async def compare_hub_prices(item: str) -> dict:
     Compare best-buy and best-sell prices for an item across all major
     trade hubs. Useful for finding arbitrage or where to buy/sell.
     """
-    type_id = _resolve_type_id(item)
+    type_id = await _resolve_type_id(item)
     if not type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
-    type_info = get_type(type_id)
+    type_info = await resolve_type_info(type_id)
     item_name = type_info["name"] if type_info else f"Type {type_id}"
 
     results = {}
@@ -218,7 +209,7 @@ async def get_market_history(
     Get daily market history for an item in a region. Returns averages,
     high/low, and volume for the last N days.
     """
-    type_id = _resolve_type_id(item)
+    type_id = await _resolve_type_id(item)
     if not type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
@@ -226,7 +217,7 @@ async def get_market_history(
     if not region_id:
         return {"error": f"Could not resolve region '{region}'."}
 
-    type_info = get_type(type_id)
+    type_info = await resolve_type_info(type_id)
     item_name = type_info["name"] if type_info else f"Type {type_id}"
 
     async with ESIClient() as esi:
@@ -350,7 +341,7 @@ async def search_contracts(
         jita_only: if True and region is Jita, only return contracts at
                    Jita IV-4 stations (filters out station containers in space)
     """
-    type_id = _resolve_type_id(item)
+    type_id = await _resolve_type_id(item)
     if not type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
@@ -358,7 +349,7 @@ async def search_contracts(
     if not region_id:
         return {"error": f"Could not resolve region '{region}'."}
 
-    type_info = get_type(type_id)
+    type_info = await resolve_type_info(type_id)
     item_name = type_info["name"] if type_info else f"Type {type_id}"
 
     wanted_types: set[str] = set()

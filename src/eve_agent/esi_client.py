@@ -206,6 +206,7 @@ class ESIClient:
         path: str,
         *,
         params: Optional[dict] = None,
+        json: Any = None,
         authenticated: bool = True,
         character_id: Optional[int] = None,
         use_cache: bool = True,
@@ -249,6 +250,7 @@ class ESIClient:
                     resp = await client.request(
                         method, url,
                         params=params,
+                        json=json,
                         headers=headers,
                     )
                 except httpx.RequestError as e:
@@ -430,6 +432,26 @@ class ESIClient:
             all_items.extend(chunk)
 
         return all_items
+
+    async def post(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        params: Optional[dict] = None,
+        authenticated: bool = False,
+        character_id: Optional[int] = None,
+    ) -> Any:
+        """POST to an ESI endpoint and return the parsed JSON body. Not cached."""
+        resp = await self.raw_request(
+            "POST", path,
+            params=params,
+            json=json,
+            authenticated=authenticated,
+            character_id=character_id,
+            use_cache=False,
+        )
+        return resp.body
 
 
 def _safe_body(resp: httpx.Response) -> Any:

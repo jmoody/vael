@@ -11,6 +11,7 @@ from typing import Optional
 
 from eve_agent import auth
 from eve_agent.esi_client import ESIClient
+from eve_agent.resolver import resolve_type_id, resolve_type_info
 from eve_agent.sde import _conn, get_system, get_type, search_types
 
 
@@ -24,17 +25,9 @@ def _current_character_id() -> int:
     return chars[0].character_id
 
 
-def _resolve_type_id(name_or_id: str) -> Optional[int]:
-    s = str(name_or_id).strip()
-    if s.isdigit():
-        return int(s)
-    matches = search_types(s, limit=10)
-    if not matches:
-        return None
-    for m in matches:
-        if m["name"].lower() == s.lower():
-            return m["type_id"]
-    return matches[0]["type_id"]
+async def _resolve_type_id(name_or_id: str) -> Optional[int]:
+    """Resolve a name or numeric ID to a type ID, with ESI fallback for items not in the SDE."""
+    return await resolve_type_id(name_or_id)
 
 
 # ---------------------------------------------------------------------------
@@ -180,11 +173,11 @@ async def get_blueprint_info(item: str) -> dict:
     For a given product name (e.g. 'Rifter'), find its blueprint and
     return material requirements and manufacturing time.
     """
-    product_type_id = _resolve_type_id(item)
+    product_type_id = await _resolve_type_id(item)
     if not product_type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
-    product = get_type(product_type_id)
+    product = await resolve_type_info(product_type_id)
     bp_link = _get_blueprint_for_product(product_type_id)
     if not bp_link:
         return {
@@ -192,7 +185,7 @@ async def get_blueprint_info(item: str) -> dict:
             "product": product["name"],
         }
 
-    bp_type = get_type(bp_link["blueprint_type_id"])
+    bp_type = await resolve_type_info(bp_link["blueprint_type_id"])
     materials = _get_manufacturing_materials(bp_link["blueprint_type_id"])
 
     # Manufacturing time
@@ -226,7 +219,7 @@ async def calculate_manufacturing_cost(
 
     me_level (0-10) reduces material requirements. ME 10 = ~10% reduction.
     """
-    product_type_id = _resolve_type_id(item)
+    product_type_id = await _resolve_type_id(item)
     if not product_type_id:
         return {"error": f"Could not resolve item '{item}'."}
 
@@ -292,7 +285,7 @@ async def calculate_manufacturing_cost(
     profit = (revenue - total_cost) if revenue else None
     margin_pct = (profit / revenue * 100) if revenue and profit else None
 
-    product = get_type(product_type_id)
+    product = await resolve_type_info(product_type_id)
     return {
         "product": product["name"],
         "runs": runs,
